@@ -140,8 +140,14 @@ Add this line to `/etc/crypttab`:
 crypt_sdcard /dev/mmcblk0p2 none luks
 ```
 
-Finally, make initramfs and leave chroot (don't bother with
-errors/warnings during mkinitramfs):
+Modify `/etc/cryptsetup-initramfs` by setting
+```
+CRYPTSETUP=y
+```
+to include `cryptsetup` files in initramfs image.
+
+Finally, make initramfs for the current kernel version
+and leave chroot (don't bother with errors/warnings during mkinitramfs):
 ```
 # ls -l /lib/modules/ |awk -F" " '{print $9}'
 
