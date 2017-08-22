@@ -1,15 +1,17 @@
-# Full disk encryption for Kali on Raspberry using LUKS
+# Full disk encryption for Kali on Raspberry (or other similar architecture) using LUKS
 
 This HOWTO is dedicated to running [Kali](https://www.kali.org/)
-on [Raspberry](https://www.raspberrypi.org/) using full disk
-encryption with [LUKS](https://guardianproject.info/code/luks/).
+on [Raspberry](https://www.raspberrypi.org/) (or other similar architecture,
+e.g. [ODROID-C2](http://www.hardkernel.com/main/products/prdt_info.php?g_code=G145457216438)
+using full disk encryption with [LUKS](https://guardianproject.info/code/luks/).
 Based on the little bit outdated document
 [here](https://www.offensive-security.com/kali-linux/raspberry-pi-luks-disk-encryption/).
 
 ## Motivation
 
-Deploying Kali on Raspberry Pi in a LAN environment as a "throw-away-hackbox"
-is obviously useful. However, keeping the collected data in secret is an
+Deploying Kali on Raspberry Pi (or other similar, small, low-powered hardware)
+in a LAN environment as a "throw-away-hackbox" is obviously useful. However,
+keeping the collected data in secret is an
 essential requirement. Here comes full disk encryption as a mandatory
 security concept.
 
@@ -29,7 +31,8 @@ repo which sets up the image from scratch (on a Kali distro).
 And here is a
 [patched version](https://github.com/tothi/kali-arm-build-scripts)
 which works on other distros than Kali, too (tested on
-[Gentoo](https://gentoo.org/)).
+[Gentoo](https://gentoo.org/)). Currently (2017-08) working build
+script for ODROID-C2 is also here in that forked repo.
 
 Get the build tools and build the image from scratch
 as root (it can take couple of hours):
@@ -54,7 +57,8 @@ capable with LUKS features in a chroot environment. For making
 this work, an x86 (host) `qemu-arm-static` binary is needed
 on the SD card filesystem. The above patched `rpi3-nexmon.sh`
 build script installs and leaves it on the image, so things
-should work well.
+should work well. (Otherwise copying the appropriate qemu
+static binary to the image is needed.)
 
 Initializing the chroot environment (on the host system as root):
 ```
@@ -99,6 +103,10 @@ Now create `/boot/config.txt` with the following content:
 initramfs initramfs.gz 0x00f00000
 ```
 
+Note that on other hardware a similar steps are needed
+(the file containing the boot params on ODROID-C2 is
+`/boot/boot.ini`).
+
 Let's set up Dropbear SSH key authentication.
 Create a (passwordless) keypair on the host machine (outside chroot!)
 and read the public key:
@@ -116,7 +124,7 @@ command="/scripts/local-top/cryptroot && kill -9 `ps | grep -m 1 'cryptroot' | c
 
 Fix permissions:
 ```
-chmod 600 /etc/dropbear-initramfs/authorized-keys
+chmod 600 /etc/dropbear-initramfs/authorized_keys
 ```
 
 Edit `/etc/fstab`. Original:
@@ -132,7 +140,7 @@ Updated `/` device changed to `/dev/mapper/crypt_sdcard`:
 # <file system>           <mount point>   <type>  <options>       <dump>  <pass>
 proc                      /proc           proc    defaults          0       0
 /dev/mmcblk0p1            /boot           vfat    defaults          0       2
-/dev/mapper/crypt/sdcard  /               ext4    defaults,noatime  0       1
+/dev/mapper/crypt_sdcard  /               ext4    defaults,noatime  0       1
 ```
 
 Add this line to `/etc/crypttab`:
@@ -140,7 +148,7 @@ Add this line to `/etc/crypttab`:
 crypt_sdcard /dev/mmcblk0p2 none luks
 ```
 
-Modify `/etc/cryptsetup-initramfs` by setting
+Modify `/etc/cryptsetup-initramfs/conf-hook` by setting
 ```
 CRYPTSETUP=y
 ```
@@ -153,6 +161,19 @@ and leave chroot (don't bother with errors/warnings during mkinitramfs):
 
 4.4.50-v7+
 # mkinitramfs -o /boot/initramfs.gz 4.4.50-v7+
+# exit
+```
+
+Note, that we have to be careful when generating the image
+(especially on other hardware), because
+`uname -r` returns the host kernel version, not the chroot one.
+So e.g. on ODROID-C2 `/boot/mkuinitrd` does not work out of
+the box, we should issue the commands in the script manually
+(adjusting the kernel version):
+```
+# rm /boot/initrd.img-3.14.79
+# update-initramfs -c -k 3.14.79
+# mkimage -A arm64 -O linux -T ramdisk -C none -a 0 -e 0 -n "uInitrd" -d /boot/initrd.img-3.14.79 /boot/uInitrd
 # exit
 ```
 
@@ -202,9 +223,10 @@ Restore rootfs to the encrypted volume and close the disk:
 ```
 
 Eject SD card and test it on the Raspberry. When boot process
-asks for passphrase, ssh to the box and enter the passphrase:
+asks for passphrase, ssh to the box and enter the passphrase
+(you may use a custom `known_hosts` file if you wish):
 ```
-$ ssh -i kali-dropbear root@192.168.88.133
+$ ssh -o "UserKnownHostsFile=~/.ssh/known_hosts.initramfs" -i ~/.ssh/kali-dropbear root@192.168.88.133
 ```
 
 Once it is working, do not forget to clean up backup files on the host:
