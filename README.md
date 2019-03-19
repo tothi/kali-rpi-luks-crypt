@@ -73,7 +73,10 @@ Initializing the chroot environment (on the host system as root):
 
 # LANG=C chroot /mnt/chroot/
 ```
-
+At first we change the default password for root:
+```
+passwd
+```
 Install required packages (in the chroot env):
 ```
 # apt-get update
@@ -100,7 +103,7 @@ dwc_otg.fiq_fix_enable=2 console=ttyAMA0,115200 kgdboc=ttyAMA0,115200 console=tt
 
 Now create `/boot/config.txt` with the following content:
 ```
-initramfs initramfs.gz 0x00f00000
+initramfs initramfs.gz followkernel
 ```
 
 Note that on other hardware a similar steps are needed
@@ -161,7 +164,6 @@ and leave chroot (don't bother with errors/warnings during mkinitramfs):
 
 4.4.50-v7+
 # mkinitramfs -o /boot/initramfs.gz 4.4.50-v7+
-# exit
 ```
 
 Note, that we have to be careful when generating the image
@@ -169,14 +171,18 @@ Note, that we have to be careful when generating the image
 `uname -r` returns the host kernel version, not the chroot one.
 So e.g. on ODROID-C2 `/boot/mkuinitrd` does not work out of
 the box, we should issue the commands in the script manually
-(adjusting the kernel version):
+(adjusting the kernel version FOR OTHER HARDWARE!):
 ```
 # rm /boot/initrd.img-3.14.79
 # update-initramfs -c -k 3.14.79
 # mkimage -A arm64 -O linux -T ramdisk -C none -a 0 -e 0 -n "uInitrd" -d /boot/initrd.img-3.14.79 /boot/uInitrd
-# exit
+#
 ```
 
+Exit chroot environment
+```
+exit
+```
 Unmount filesystems and backup rootfs before creating encrypted
 volume (and deleting everything) on SD card:
 ```
@@ -221,9 +227,22 @@ Restore rootfs to the encrypted volume and close the disk:
 # cryptsetup luksClose /dev/mapper/crypt_sdcard
 # sync
 ```
+Eject SD card and test it on the Raspberry. 
 
-Eject SD card and test it on the Raspberry. When boot process
-asks for passphrase, ssh to the box and enter the passphrase
+## Boot the device
+
+The first boot process will fail und fallback into busybox. Enter the following commands:
+```
+# cryptsetup luksOpen /dev/mmcblk0p2 crypt_sdcard
+## provide password
+# exit
+```
+Your device should boot now. Login with the password you've chosen earlier and run:
+```
+mkinitramfs -o /boot/initramfs.gz
+reboot
+```
+You will be asked for passphrase now with a nicer prompt, furthermore you should be able to ssh to the busybox and enter the passphrase
 (you may use a custom `known_hosts` file if you wish):
 ```
 $ ssh -o "UserKnownHostsFile=~/.ssh/known_hosts.initramfs" -i ~/.ssh/kali-dropbear root@192.168.88.133
@@ -234,3 +253,6 @@ Once it is working, do not forget to clean up backup files on the host:
 # rm -fr /mnt/backup
 # rm -fr /mnt/chroot
 ```
+
+## Trouble shooting
+To get full debug output during boot you can add `debug=1` in cmdline.txt 
